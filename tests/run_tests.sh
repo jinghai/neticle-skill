@@ -36,19 +36,20 @@ test_endpoint() {
     # We consider 0, 400 (Validation Error due to dummy data), 404 (Not Found), 
     # 405 (Method Not Allowed), 403 (Forbidden), 429 (Rate Limit) as successful routing
     # to the Neticle API because the API layer responded rather than our script failing natively.
-    if [[ $exit_code -ne 0 && $exit_code -ne 400 && $exit_code -ne 404 && $exit_code -ne 403 && $exit_code -ne 405 && $exit_code -ne 429 && $exit_code -ne 141 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
+        echo "✅ SUCCESS (200 OK)"
+        echo "$output" | grep -v 'DEBUG' | grep -v 'RateLimit' | jq -c '.data // .error' 2>/dev/null | cut -c 1-150 || echo "$output" | head -n 5 || true
+        TEST_RESULTS["$name"]="✅ Passed (200 OK)"
+    elif [[ $exit_code -eq 403 ]]; then
+        echo "⚠️ SKIPPED (403 Forbidden - expected for Read-Only API Key)"
+        TEST_RESULTS["$name"]="⚠️ Skipped (No Permission 403)"
+    elif [[ $exit_code -eq 404 || $exit_code -eq 400 || $exit_code -eq 422 ]]; then
+        echo "ℹ️ ROUTED (HTTP 4xx - expected for dummy/test IDs)"
+        TEST_RESULTS["$name"]="ℹ️ Routed (Validation 4xx)"
+    else
         echo "❌ FAILED (Exit code $exit_code)"
         echo "$output" | head -n 10 || true
         TEST_RESULTS["$name"]="❌ Failed (Exit $exit_code)"
-    else
-        echo "✅ SUCCESS/ROUTED (Exit code: $exit_code). Output snippet:"
-        echo "$output" | grep -v 'DEBUG' | grep -v 'RateLimit' | jq -c '.data // .error' 2>/dev/null | cut -c 1-150 || echo "$output" | head -n 5 || true
-        # Keep track if it's strictly 200 or 4xx
-        if [[ $exit_code -eq 0 ]]; then
-             TEST_RESULTS["$name"]="✅ Passed (200 OK)"
-        else
-             TEST_RESULTS["$name"]="✅ Routed (HTTP 4xx validation)"
-        fi
     fi
 }
 
@@ -90,7 +91,7 @@ test_endpoint "List Insights" "neticle_list_insights '{\"filters\":{\"keywords\"
 echo "=== 3. CONFIGURATION MANAGEMENT ==="
 test_endpoint "List Keywords" "neticle_list_keywords"
 test_endpoint "Get Keyword" "neticle_get_keyword '$TEST_KEYWORD_ID'"
-test_endpoint "Create Keyword" "neticle_create_keyword '{\"profileId\":$TEST_PROFILE_ID,\"name\":\"test_kw_agent_$RANDOM\",\"label\":\"Test Kw\"}'"
+test_endpoint "Create Keyword" "neticle_create_keyword '{\"profileId\":$TEST_PROFILE_ID,\"name\":\"test_kw_agent_$RANDOM\",\"label\":\"Test Kw\"}' '1'"
 # Fetch a dummy ID created or just use TEST_KEYWORD_ID
 test_endpoint "Update Keyword" "neticle_update_keyword '$TEST_KEYWORD_ID' '{\"name\":\"abutti_updated\"}'"
 
@@ -112,28 +113,28 @@ test_endpoint "List Aspect Groups" "neticle_list_aspect_groups"
 ASPECT_GROUP_ID=$(neticle_list_aspect_groups 2>/dev/null | jq -r '.data[0].id' 2>/dev/null || echo "1")
 if [ "$ASPECT_GROUP_ID" = "null" ] || [ -z "$ASPECT_GROUP_ID" ]; then ASPECT_GROUP_ID="1"; fi
 test_endpoint "Get Aspect Group" "neticle_get_aspect_group '$ASPECT_GROUP_ID'"
-test_endpoint "Create Aspect Group" "neticle_create_aspect_group '{\"profileId\":$TEST_PROFILE_ID,\"label\":\"Test Aspect Grp\"}'"
+test_endpoint "Create Aspect Group" "neticle_create_aspect_group '{\"profileId\":$TEST_PROFILE_ID,\"label\":\"Test Aspect Grp\"}' '$TEST_PROFILE_ID'"
 test_endpoint "Update Aspect Group" "neticle_update_aspect_group '$ASPECT_GROUP_ID' '{\"label\":\"Test Aspect Grp Updated\"}'"
 
 test_endpoint "List Own Channels" "neticle_list_own_channels"
 OC_ID=$(neticle_list_own_channels 2>/dev/null | jq -r '.data[0].id' 2>/dev/null || echo "1")
 if [ "$OC_ID" = "null" ] || [ -z "$OC_ID" ]; then OC_ID="1"; fi
 test_endpoint "Get Own Channel" "neticle_get_own_channel '$OC_ID'"
-test_endpoint "Create Own Channel" "neticle_create_own_channel '{\"profileId\":$TEST_PROFILE_ID,\"platformId\":2,\"externalId\":\"dummy\"}'"
-test_endpoint "Delete Own Channel" "neticle_delete_own_channel '$OC_ID'"
+test_endpoint "Create Own Channel" "neticle_create_own_channel '{\"profileId\":$TEST_PROFILE_ID,\"platformId\":2,\"externalId\":\"dummy\"}' '$TEST_KEYWORD_ID'"
+test_endpoint "Delete Own Channel" "neticle_delete_own_channel '$OC_ID' '$TEST_KEYWORD_ID'"
 
 echo "=== 4. FILTERS & SUGGESTIONS ==="
 test_endpoint "List Keyword Filters" "neticle_list_keyword_filters '$TEST_KEYWORD_ID'"
-test_endpoint "Create Keyword Filters" "neticle_create_keyword_filters '$TEST_KEYWORD_ID' '[\"dummyfilter1\"]'"
-test_endpoint "Delete Keyword Filters" "neticle_delete_keyword_filters '$TEST_KEYWORD_ID' '[\"dummyfilter1\"]'"
+test_endpoint "Create Keyword Filters" "neticle_create_keyword_filters '[\"dummyfilter1\"]' '$TEST_KEYWORD_ID'"
+test_endpoint "Delete Keyword Filters" "neticle_delete_keyword_filters '[\"dummyfilter1\"]' '$TEST_KEYWORD_ID'"
 
 test_endpoint "List Synonyms" "neticle_list_synonyms '$TEST_KEYWORD_ID'"
-test_endpoint "Create Synonyms" "neticle_create_synonyms '$TEST_KEYWORD_ID' '[\"dummysyn1\"]'"
-test_endpoint "Delete Synonyms" "neticle_delete_synonyms '$TEST_KEYWORD_ID' '[\"dummysyn1\"]'"
+test_endpoint "Create Synonyms" "neticle_create_synonyms '[\"dummysyn1\"]' '$TEST_KEYWORD_ID'"
+test_endpoint "Delete Synonyms" "neticle_delete_synonyms '[\"dummysyn1\"]' '$TEST_KEYWORD_ID'"
 
 test_endpoint "List Excludes" "neticle_list_excludes '$TEST_KEYWORD_ID'"
-test_endpoint "Create Excludes" "neticle_create_excludes '$TEST_KEYWORD_ID' '[\"dummyexclude1\"]'"
-test_endpoint "Delete Excludes" "neticle_delete_excludes '$TEST_KEYWORD_ID' '[\"dummyexclude1\"]'"
+test_endpoint "Create Excludes" "neticle_create_excludes '[\"dummyexclude1\"]' '$TEST_KEYWORD_ID'"
+test_endpoint "Delete Excludes" "neticle_delete_excludes '[\"dummyexclude1\"]' '$TEST_KEYWORD_ID'"
 
 test_endpoint "Filter Suggestions" "neticle_keyword_filter_suggestions '$TEST_KEYWORD_ID'"
 test_endpoint "Synonym Suggestions" "neticle_synonym_suggestions '$TEST_KEYWORD_ID'"

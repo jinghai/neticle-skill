@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+tests/test_report.log
+
+# Temporary files
+/tmp/*
+*.tmp
+*.bak
+*~
+
+# environments
+.env
+.neticle_headers_*
