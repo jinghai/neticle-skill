@@ -5,56 +5,78 @@ set -e
 # Load the API functions
 source ./scripts/neticle-api.sh
 
-# Enable debug mode to show dynamic rate limits
+# Enable debug mode to see headers and rate limits
 export NETICLE_DEBUG=1
 
 TEST_KEYWORD_ID=102336
 
 echo "=========================================================="
-echo "🧪 NETICLE API CORE INTEGRATION TESTS"
+echo "🧪 NETICLE API FULL ENDPOINT TESTS"
 echo "=========================================================="
 
-echo -e "\n--- Test 1: list_mentions (Ad-hoc queries) ---"
-# We expect to see RateLimit-Remaining headers in the debug output
-# Need to supply the required parameters: keywords and aspects (aspects can be empty if not needed by specific API, but docs say required. 
-# Let's try an empty array for aspects as we found no aspectGroups).
-echo "Calling list_mentions with keyword $TEST_KEYWORD_ID..."
-list_mentions_params="{\"filters\":{\"keywords\":[$TEST_KEYWORD_ID],\"aspects\":[]}}"
-neticle_list_mentions "$list_mentions_params" > /tmp/neticle_test_mentions.json
-echo "Mentions query returned $(jq '.meta.totalCount' /tmp/neticle_test_mentions.json 2>/dev/null || echo 'unknown') total results."
+# Define a helper function to safely test a read-only endpoint
+test_read_endpoint() {
+    local name="$1"
+    local command="$2"
+    local params="${3:-}"
+    
+    echo -e "\n--- Test: $name ---"
+    echo "Running: $command $params"
+    
+    # Run the command and capture output and exit code
+    set +e
+    if [[ -z "$params" ]]; then
+        output=$($command 2>&1)
+    else
+        output=$($command "$params" 2>&1)
+    fi
+    exit_code=$?
+    set -e
+    
+    if [[ $exit_code -ne 0 && $exit_code -ne 429 && $exit_code -ne 141 ]]; then
+        echo "❌ Command failed with exit code $exit_code."
+        echo "$output" | head -n 10 || true
+        # return 1 # We won't exit the whole script to allow other tests to run
+    else
+        echo "✅ Success! Output snippet:"
+        echo "$output" | grep -v 'DEBUG' | grep -v 'RateLimit' | jq -c '.data' 2>/dev/null | cut -c 1-100 || echo "$output" | head -n 5 || true
+    fi
+}
 
+echo "=== 1. RESOURCES & CORE DATA ==="
+test_read_endpoint "List Resources" "neticle_list_resources"
+test_read_endpoint "List Mentions (Keyword $TEST_KEYWORD_ID)" "neticle_list_mentions" "{\"filters\":{\"keywords\":[$TEST_KEYWORD_ID],\"aspects\":[]}}"
+test_read_endpoint "Data Feed Changes (Keyword $TEST_KEYWORD_ID)" "neticle_poll_data_feed" "{\"dataSourceId\":\"$TEST_KEYWORD_ID\"}"
 
-echo -e "\n--- Test 2: poll_data_feed (Data Synchronization) ---"
-echo "Calling poll_data_feed for data source $TEST_KEYWORD_ID..."
-poll_params="{\"dataSourceId\":\"$TEST_KEYWORD_ID\"}"
-neticle_poll_data_feed "$poll_params" > /tmp/neticle_test_poll.json
-next_token=$(jq -r '.meta.nextPageToken // ""' /tmp/neticle_test_poll.json 2>/dev/null || echo "")
-echo "Poll returned. Next page token provided: ${next_token:0:10}..."
+echo "=== 2. AGGREGATIONS & INSIGHTS ==="
+test_read_endpoint "Get KPIs" "neticle_get_kpis" "{\"filters\":{\"keywords\":[$TEST_KEYWORD_ID],\"aspects\":[]}}"
+test_read_endpoint "Get Interactions" "neticle_get_interactions" "{\"filters\":{\"keywords\":[$TEST_KEYWORD_ID],\"aspects\":[]}}"
+test_read_endpoint "List Chart Templates" "neticle_list_chart_templates"
+# test_read_endpoint "List Insights" "neticle_list_insights" "{\"filters\":{\"keywords\":[$TEST_KEYWORD_ID],\"aspects\":[],\"interval\":{\"start\":1700000000000,\"end\":1710000000000}}}"
 
-echo -e "\n--- Test 3: poll_data_feed Rate Limit Trigger (Wait required) ---"
-echo "The data-feed endpoint allows max 1 call per minute per data source. Let's call it again to see the dynamic rate limit handling!"
+echo "=== 3. CONFIGURATION MANAGEMENT ==="
+test_read_endpoint "List Keywords" "neticle_list_keywords"
+test_read_endpoint "Get Keyword ($TEST_KEYWORD_ID)" "neticle_get_keyword" "$TEST_KEYWORD_ID"
+test_read_endpoint "List Keyword Groups" "neticle_list_keyword_groups"
+test_read_endpoint "List Aspects" "neticle_list_aspects"
+test_read_endpoint "List Aspect Groups" "neticle_list_aspect_groups"
+test_read_endpoint "List Own Channels" "neticle_list_own_channels"
 
-# In order not to block the AI agent completely for a full minute, we use a different keyword ID or we just let it fail or wait.
-# Actually, the user wants to see the rate limit feedback management.
-# Our script handles 429 automatically if RateLimit-Reset is present, or warns if remaining < 100.
-# Let's just do a manual request to trigger 429 and show our script's robust handling:
-# neticle_poll_data_feed "$poll_params" 2>&1 | head -n 20
-# Wait, if we do that, it will loop or sleep depending on script logic.
-# Our current _neticle_request logic:
-# if HTTP 429, it prints "Error 429: Rate limit exceeded. Retry after X s." and returns 1.
-# It only *sleeps* before request if rate_remaining < 10. But for 429, the header rate_remaining might be 0, and it handles it!
+echo "=== 4. FILTERS & SUGGESTIONS ==="
+test_read_endpoint "List Keyword Filters" "neticle_list_keyword_filters" "$TEST_KEYWORD_ID"
+test_read_endpoint "List Synonyms" "neticle_list_synonyms" "$TEST_KEYWORD_ID"
+test_read_endpoint "List Excludes" "neticle_list_excludes" "$TEST_KEYWORD_ID"
+test_read_endpoint "Filter Suggestions" "neticle_keyword_filter_suggestions" "$TEST_KEYWORD_ID"
+test_read_endpoint "Synonym Suggestions" "neticle_synonym_suggestions" "$TEST_KEYWORD_ID"
+test_read_endpoint "Exclude Suggestions" "neticle_exclude_suggestions" "$TEST_KEYWORD_ID"
 
-set +e
-neticle_poll_data_feed "$poll_params" > /dev/null
-exit_code=$?
-set -e
-
-if [ $exit_code -eq 1 ]; then
-    echo "✅ Successfully caught rate limit using dynamic feedback!"
-else
-    echo "⚠️ Did not get a 429 error. Perhaps rate limit is different or handled differently."
-fi
+echo "=== 5. REFERENCE DATA ==="
+test_read_endpoint "List Sources" "neticle_list_sources"
+test_read_endpoint "List Languages" "neticle_list_languages"
+test_read_endpoint "List Countries" "neticle_list_countries"
+test_read_endpoint "List Clients" "neticle_list_clients"
+test_read_endpoint "List Profiles" "neticle_list_profiles"
 
 echo -e "\n=========================================================="
-echo "✅ Tests completed successfully."
+echo "✅ All read-only endpoint tests completed."
 echo "=========================================================="

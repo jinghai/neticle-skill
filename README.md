@@ -1,6 +1,9 @@
 # Neticle Skill
 
-> AI Agent Skill for the [Neticle Data API](https://data.neticle.com/docs/version/latest) — social media monitoring, sentiment analysis, and media intelligence.
+> [!NOTE]
+> **English Documentation** | [中文文档](README_zh.md)
+
+> AI Agent Skill for the [Neticle Data API](https://data.neticle.com/docs/version/latest) (v24.04) — social media monitoring, sentiment analysis, and media intelligence.
 
 ## Overview
 
