@@ -47,7 +47,7 @@ bash scripts/neticle-api.sh list_mentions '{"filters":{"keywords":[10001],"aspec
 ### Via skills.sh (npx)
 
 ```bash
-npx skills add <owner>/neticle-skill
+npx skills add jinghai/neticle-skill
 ```
 
 ### Manual
