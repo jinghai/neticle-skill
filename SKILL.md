@@ -178,6 +178,39 @@ Parameters for `/changes`:
 - `fromTimestamp` (optional): only mentions created after this UTC timestamp
 - `withRelatedResources` (optional): include resource labels
 
+#### Data Feed mention standard fields (sync baseline)
+
+For robust data synchronization, treat the following as the standard mention field baseline:
+
+- Identity & basic: `id`, `url`, `title`, `author`, `domain`, `hash`, `note`, `thumbnailUrl`, `relatedUrl`, `threadId`
+- Timing: `createdAtUtcMs`, `discoveredAtUtcMs`
+- Text: `textOriginal`, `textFormatted`, `contentLength`
+- Translation & relevance: `translatedTitle`, `translatedTextFormatted`, `relatedDiscussionUrl`, `relevantTextFormatted`, `relevantTextOriginal`
+- Ownership & dimensions: `aspectId`, `keywordId`, `genderId`, `sourceId`, `languageId`, `countryId`, `subSourceId`, `ownChannelId`, `cityId`, `regionId`
+- Label IDs: `topicLabelIds`, `brandLabelIds`, `personLabelIds`, `emotionLabelIds`, `locationLabelIds`, `attributeLabelIds`, `organizationLabelIds`
+- Engagement: `reach`, `sumInteractions`, `sumDislikes`, `sumReactions`, `engagementRate`, `sumLikes`, `sumShares`, `sumComments`, `sumFollowers`
+- Geo & flags: `latitude`, `longitude`, `importance`, `isMarked`, `polarity`
+- Channel details: `facebookDetails`, `instagramDetails`, `twitterDetails`, `youtubeDetails`, `tiktokDetails`, `pinterestDetails`, `linkedinDetails`, `threadsDetails`, `redditDetails`, `reviewDetails`
+- Thread analytics: `threadMetrics`
+- Attachments: `urlAttachments`, `imageAttachments`, `videoAttachments`
+
+#### `meta.relatedResources` standard groups
+
+When `withRelatedResources=true`, `meta.relatedResources` can include:
+
+- `labels` (`topic`, `brand`, `person`, `emotion`, `location`, `attribute`, `organization`)
+- `sources`
+- `aspects`
+- `keywords`
+- `ownChannels`
+- `genders`
+- `languages`
+- `cities`
+- `regions`
+- `countries`
+
+This map is essential for reliable `ID -> label/name` decoding in analytics pipelines.
+
 ### 4. Aggregations
 
 | Endpoint | Method | Description |
@@ -314,3 +347,5 @@ All endpoints return an `ApiPayload` structure:
 5. **Interval timestamps** — both start and end are **inclusive**; use milliseconds for precision
 6. **Time zones** — all timestamps are UTC; convert local times before querying
 7. **Pagination** — default 100 items per page; Data Feed maxes at 1,000
+8. **Enable `withRelatedResources=true` for sync** when downstream needs label/name resolution
+9. **Validate sync accuracy by mention ID sampling**: compare stored rows with `/mentions/:id` across scalar/text/array/object fields, not text-only
